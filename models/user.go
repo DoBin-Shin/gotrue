@@ -1,7 +1,9 @@
 package models
 
 import (
+	"crypto/sha512"
 	"database/sql"
+	"encoding/hex"
 	"strings"
 	"time"
 
@@ -228,13 +230,12 @@ func (u *User) SetEmail(tx *storage.Connection, email string) error {
 	return tx.UpdateOnly(u, "email")
 }
 
-// hashPassword generates a hashed password from a plaintext string
+// hashPassword generates a hashed password from a plaintext string using SHA-512
 func hashPassword(password string) (string, error) {
-	pw, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-	return string(pw), nil
+	hasher := sha512.New()
+	hasher.Write([]byte(password))
+	hash := hasher.Sum(nil)
+	return "sha512:" + hex.EncodeToString(hash), nil
 }
 
 func (u *User) UpdatePassword(tx *storage.Connection, password string) error {
@@ -248,6 +249,17 @@ func (u *User) UpdatePassword(tx *storage.Connection, password string) error {
 
 // Authenticate a user from a password
 func (u *User) Authenticate(password string) bool {
+	// SHA-512 형식 확인
+	if strings.HasPrefix(u.EncryptedPassword, "sha512:") {
+		// SHA-512 해시 비교
+		hasher := sha512.New()
+		hasher.Write([]byte(password))
+		hash := hasher.Sum(nil)
+		computedHash := "sha512:" + hex.EncodeToString(hash)
+		return computedHash == u.EncryptedPassword
+	}
+	
+	// 기존 bcrypt 해시를 위한 호환성 유지
 	err := bcrypt.CompareHashAndPassword([]byte(u.EncryptedPassword), []byte(password))
 	return err == nil
 }
